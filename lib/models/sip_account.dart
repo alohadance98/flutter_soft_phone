@@ -85,7 +85,7 @@ class SipAccount {
     _kHotline: hotline,
     _kPassword: password,
     _kAutoConnect: autoConnect,
-    _kIsOnline: isOnline,
+    _kIsOnline: status == AccountStatus.online,
   };
 
   @override
