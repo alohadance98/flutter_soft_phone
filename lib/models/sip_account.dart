@@ -69,6 +69,7 @@ class SipAccount {
   static const _kHotline = 'hotline';
   static const _kPassword = 'password';
   static const _kAutoConnect = 'autoConnect';
+  static const _kIsOnline = 'isOnline';
 
   factory SipAccount.fromJson(Map<String, dynamic> json) {
     return SipAccount(
@@ -84,6 +85,7 @@ class SipAccount {
     _kHotline: hotline,
     _kPassword: password,
     _kAutoConnect: autoConnect,
+    _kIsOnline: isOnline,
   };
 
   @override
