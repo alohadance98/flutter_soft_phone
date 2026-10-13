@@ -68,8 +68,14 @@ class _SoftPhonePageState extends State<SoftPhonePage> {
       hotline: _hotline.text.trim(),
       password: _password.text,
     );
-    phone.addAccount(account);
-    await phone.register(account);
+    // Chờ baresip báo kết quả thật từ server SIP (tối đa 10 giây).
+    final ok = await phone.registerAndWait(account);
+    if (!mounted) return;
+    setState(() {
+      _status = ok
+          ? 'Đăng ký ${account.hotline} thành công'
+          : 'Đăng ký ${account.hotline} thất bại hoặc quá thời gian chờ';
+    });
   }
 
   @override

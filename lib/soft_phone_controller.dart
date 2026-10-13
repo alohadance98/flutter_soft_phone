@@ -43,6 +43,9 @@ class SoftPhoneController extends ChangeNotifier {
 
   final List<SipAccount> _accounts;
 
+  /// Các lời gọi [registerAndWait] đang chờ kết quả từ baresip.
+  final Map<SipAccount, Completer<bool>> _pendingRegistrations = {};
+
   /// DLL dùng chung một mã cho "đăng ký xong" và "huỷ đăng ký xong",
   /// nên phải nhớ hành động đang diễn ra để biết sự kiện tiếp theo nghĩa là gì.
   bool _isUnregistering = false;
@@ -106,12 +109,14 @@ class SoftPhoneController extends ChangeNotifier {
     _activeAccount = null;
     _currentCall = null;
     _isUnregistering = false;
+    _failAllPendingRegistrations();
     notifyListeners();
     onConnectionChanged?.call(false);
   }
 
   @override
   void dispose() {
+    _failAllPendingRegistrations();
     _eventSubscription.cancel();
     audioIn.dispose();
     engine.dispose();
@@ -130,6 +135,7 @@ class SoftPhoneController extends ChangeNotifier {
 
   void removeAccount(SipAccount account) {
     if (account.isOnline) unregister(account);
+    _completePendingRegistration(account, false);
     _accounts.remove(account);
     if (_activeAccount == account) _activeAccount = null;
     notifyListeners();
@@ -140,10 +146,69 @@ class SoftPhoneController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Gửi lệnh đăng ký và trả về ngay, **không chờ** server SIP phản hồi.
+  /// Trạng thái [SipAccount.isOnline] chỉ đổi khi baresip báo sự kiện về
+  /// (vài trăm ms sau); theo dõi qua [addListener] / [onConnectionChanged],
+  /// hoặc dùng [registerAndWait] nếu cần biết kết quả.
   Future<void> register(SipAccount account) async {
     if (account.isOnline || !account.isComplete) return;
     await engine.start(); // không làm gì nếu đã chạy
     engine.register(account);
+  }
+
+  /// Đăng ký [account] và chờ tới khi baresip báo kết quả.
+  ///
+  /// Trả `true` khi đăng ký thành công (account chuyển sang online), `false`
+  /// khi server từ chối, thiếu thông tin, account bị xoá / controller bị
+  /// [shutdown] trong lúc chờ, hoặc quá [timeout] mà chưa có phản hồi.
+  /// [timeout] được tính từ sau khi lệnh đăng ký đã gửi (không bao gồm
+  /// thời gian khởi động baresip).
+  ///
+  /// Nếu [account] chưa có trong [accounts] thì sẽ được thêm vào. Nếu đã có
+  /// một account cùng server + hotline, kết quả áp dụng cho account đó.
+  Future<bool> registerAndWait(
+    SipAccount account, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final target = _accounts.where((a) => a.sameIdentity(account)).firstOrNull;
+    if (target == null) {
+      _accounts.add(account);
+      notifyListeners();
+    }
+    final tracked = target ?? account;
+
+    if (tracked.isOnline) return true;
+    if (!tracked.isComplete) return false;
+
+    // Đang có lời gọi khác chờ cùng account: dùng chung kết quả.
+    final pending = _pendingRegistrations[tracked];
+    if (pending != null) return pending.future;
+
+    final completer = Completer<bool>();
+    _pendingRegistrations[tracked] = completer;
+    await register(tracked);
+
+    return completer.future.timeout(
+      timeout,
+      onTimeout: () {
+        log('[SoftPhone] register ${tracked.hotline} timed out');
+        _pendingRegistrations.remove(tracked);
+        return false;
+      },
+    );
+  }
+
+  void _completePendingRegistration(SipAccount account, bool result) {
+    final completer = _pendingRegistrations.remove(account);
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(result);
+    }
+  }
+
+  void _failAllPendingRegistrations() {
+    for (final account in _pendingRegistrations.keys.toList()) {
+      _completePendingRegistration(account, false);
+    }
   }
 
   void unregister(SipAccount account) {
@@ -217,7 +282,7 @@ class SoftPhoneController extends ChangeNotifier {
       case SipEventType.registrationChanged:
         _onRegistrationChanged(event);
       case SipEventType.registerFailed:
-        log('[SoftPhone] register failed: $event');
+        _onRegisterFailed(event);
       case SipEventType.incomingCall:
         _onIncomingCall(event);
       case SipEventType.callEstablished:
@@ -241,6 +306,7 @@ class SoftPhoneController extends ChangeNotifier {
 
     if (wasUnregistering) {
       account.status = AccountStatus.offline;
+      _completePendingRegistration(account, false);
       if (_activeAccount == account) _activeAccount = null;
       // Không còn đầu số nào online thì tắt hẳn baresip để tiết kiệm tài nguyên.
       if (!isOnline) {
@@ -251,9 +317,25 @@ class SoftPhoneController extends ChangeNotifier {
       if (account.isOnline) return; // DLL có thể báo trùng
       account.status = AccountStatus.online;
       _activeAccount ??= account;
+      _completePendingRegistration(account, true);
       onConnectionChanged?.call(true);
     }
     notifyListeners();
+  }
+
+  void _onRegisterFailed(SipEvent event) {
+    log('[SoftPhone] register failed: $event');
+    _isUnregistering = false;
+    // Nếu nhận ra account trong nội dung sự kiện thì chỉ báo lỗi account đó,
+    // không thì coi mọi lời gọi registerAndWait đang chờ đều thất bại.
+    final account = _pendingRegistrations.keys
+        .where((a) => event.text.contains(a.hotline))
+        .firstOrNull;
+    if (account != null) {
+      _completePendingRegistration(account, false);
+    } else {
+      _failAllPendingRegistrations();
+    }
   }
 
   void _onIncomingCall(SipEvent event) {

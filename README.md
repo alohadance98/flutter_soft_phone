@@ -48,8 +48,13 @@ final phone = SoftPhoneController();
 await phone.init();
 
 final account = SipAccount(server: '172.28.0.203', hotline: '1001', password: '...');
+
+// Cách 1: gửi lệnh và trả về ngay; trạng thái online về sau qua notifyListeners.
 phone.addAccount(account);
 await phone.register(account);
+
+// Cách 2: chờ kết quả thật từ server SIP (true = online, false = lỗi/timeout).
+final ok = await phone.registerAndWait(account, timeout: const Duration(seconds: 10));
 
 phone.dial('0912345678');
 phone.hangup();
