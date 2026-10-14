@@ -46,6 +46,9 @@ class SoftPhoneController extends ChangeNotifier {
   /// Các lời gọi [registerAndWait] đang chờ kết quả từ baresip.
   final Map<SipAccount, Completer<bool>> _pendingRegistrations = {};
 
+  /// Các lời gọi [unregisterAndWait] đang chờ kết quả từ baresip.
+  final Map<SipAccount, Completer<bool>> _pendingUnregistrations = {};
+
   /// DLL dùng chung một mã cho "đăng ký xong" và "huỷ đăng ký xong",
   /// nên phải nhớ hành động đang diễn ra để biết sự kiện tiếp theo nghĩa là gì.
   bool _isUnregistering = false;
@@ -110,6 +113,8 @@ class SoftPhoneController extends ChangeNotifier {
     _currentCall = null;
     _isUnregistering = false;
     _failAllPendingRegistrations();
+    // Mọi đầu số đã về offline nên coi như huỷ đăng ký xong.
+    _completeAllPendingUnregistrations(true);
     notifyListeners();
     onConnectionChanged?.call(false);
   }
@@ -117,6 +122,7 @@ class SoftPhoneController extends ChangeNotifier {
   @override
   void dispose() {
     _failAllPendingRegistrations();
+    _completeAllPendingUnregistrations(false);
     _eventSubscription.cancel();
     audioIn.dispose();
     engine.dispose();
@@ -136,6 +142,7 @@ class SoftPhoneController extends ChangeNotifier {
   void removeAccount(SipAccount account) {
     if (account.isOnline) unregister(account);
     _completePendingRegistration(account, false);
+    _completePendingUnregistration(account, false);
     _accounts.remove(account);
     if (_activeAccount == account) _activeAccount = null;
     notifyListeners();
@@ -214,6 +221,53 @@ class SoftPhoneController extends ChangeNotifier {
   void unregister(SipAccount account) {
     if (!account.isOnline) return;
     engine.unregister(account);
+  }
+
+  /// Huỷ đăng ký [account] và chờ tới khi baresip báo kết quả.
+  ///
+  /// Trả `true` khi huỷ đăng ký xong (account chuyển sang offline) hoặc
+  /// account vốn đã offline / không có trong [accounts]. Trả `false` khi
+  /// baresip báo lỗi, account bị xoá / controller bị dispose trong lúc chờ,
+  /// hoặc quá [timeout] mà chưa có phản hồi.
+  ///
+  /// Account được tìm theo server + hotline nên có thể truyền một bản copy.
+  Future<bool> unregisterAndWait(
+    SipAccount account, {
+    Duration timeout = const Duration(seconds: 10),
+  }) {
+    final tracked = _accounts.where((a) => a.sameIdentity(account)).firstOrNull;
+    if (tracked == null || !tracked.isOnline) return Future.value(true);
+
+    // Đang có lời gọi khác chờ cùng account: dùng chung kết quả.
+    final pending = _pendingUnregistrations[tracked];
+    if (pending != null) return pending.future;
+
+    final completer = Completer<bool>();
+    _pendingUnregistrations[tracked] = completer;
+    unregister(tracked);
+
+    return completer.future.timeout(
+      timeout,
+      onTimeout: () {
+        log('[SoftPhone] unregister ${tracked.hotline} timed out');
+        // Complete luôn completer để các lời gọi dùng chung cũng nhận `false`.
+        _completePendingUnregistration(tracked, false);
+        return false;
+      },
+    );
+  }
+
+  void _completePendingUnregistration(SipAccount account, bool result) {
+    final completer = _pendingUnregistrations.remove(account);
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(result);
+    }
+  }
+
+  void _completeAllPendingUnregistrations(bool result) {
+    for (final account in _pendingUnregistrations.keys.toList()) {
+      _completePendingUnregistration(account, result);
+    }
   }
 
   void unregisterAll() {
@@ -307,6 +361,7 @@ class SoftPhoneController extends ChangeNotifier {
     if (wasUnregistering) {
       account.status = AccountStatus.offline;
       _completePendingRegistration(account, false);
+      _completePendingUnregistration(account, true);
       if (_activeAccount == account) _activeAccount = null;
       // Không còn đầu số nào online thì tắt hẳn baresip để tiết kiệm tài nguyên.
       if (!isOnline) {
@@ -326,6 +381,14 @@ class SoftPhoneController extends ChangeNotifier {
   void _onRegisterFailed(SipEvent event) {
     log('[SoftPhone] register failed: $event');
     _isUnregistering = false;
+    // Lỗi khi huỷ đăng ký: chỉ báo cho unregisterAndWait nếu nhận ra account.
+    final unregistering = _pendingUnregistrations.keys
+        .where((a) => event.text.contains(a.hotline))
+        .firstOrNull;
+    if (unregistering != null) {
+      _completePendingUnregistration(unregistering, false);
+      return;
+    }
     // Nếu nhận ra account trong nội dung sự kiện thì chỉ báo lỗi account đó,
     // không thì coi mọi lời gọi registerAndWait đang chờ đều thất bại.
     final account = _pendingRegistrations.keys

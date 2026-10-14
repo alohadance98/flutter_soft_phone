@@ -58,6 +58,10 @@ final ok = await phone.registerAndWait(account, timeout: const Duration(seconds:
 
 phone.dial('0912345678');
 phone.hangup();
+
+// Huỷ đăng ký: unregister() trả về ngay, unregisterAndWait() chờ server xác nhận
+// (true = đã offline, false = lỗi/timeout).
+final off = await phone.unregisterAndWait(account);
 ```
 
 `SoftPhoneController` là `ChangeNotifier`, bọc UI bằng `ListenableBuilder`
