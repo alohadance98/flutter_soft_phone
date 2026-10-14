@@ -32,6 +32,32 @@ class CallSession {
   bool get isRinging => state == CallState.ringing;
   bool get isActive => state == CallState.active;
 
+  // ---- JSON (để truyền dữ liệu cuộc gọi sang webview) ----
+
+  static const _kDirection = 'direction';
+  static const _kRemoteNumber = 'remoteNumber';
+  static const _kState = 'state';
+  static const _kStartedAt = 'startedAt';
+
+  /// Enum đọc theo tên (`incoming`, `ringing`...); giá trị lạ hoặc thiếu
+  /// thì dùng mặc định. `startedAt` dạng ISO 8601, thiếu thì lấy thời điểm hiện tại.
+  factory CallSession.fromJson(Map<String, dynamic> json) {
+    return CallSession(
+      direction: CallDirection.values.asNameMap()[json[_kDirection]] ??
+          CallDirection.outgoing,
+      remoteNumber: json[_kRemoteNumber] as String? ?? '',
+      state: CallState.values.asNameMap()[json[_kState]] ?? CallState.ringing,
+      startedAt: DateTime.tryParse(json[_kStartedAt] as String? ?? ''),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    _kDirection: direction.name,
+    _kRemoteNumber: remoteNumber,
+    _kState: state.name,
+    _kStartedAt: startedAt.toIso8601String(),
+  };
+
   @override
   String toString() => 'CallSession($direction $remoteNumber, $state)';
 }

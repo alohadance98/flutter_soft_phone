@@ -95,7 +95,9 @@ class _SoftPhonePageState extends State<SoftPhonePage> {
                     const SizedBox(height: 16),
                     TextField(
                       controller: _server,
-                      decoration: const InputDecoration(labelText: 'SIP server'),
+                      decoration: const InputDecoration(
+                        labelText: 'SIP server',
+                      ),
                     ),
                     TextField(
                       controller: _hotline,
@@ -115,7 +117,9 @@ class _SoftPhonePageState extends State<SoftPhonePage> {
                         ),
                         const SizedBox(width: 8),
                         OutlinedButton(
-                          onPressed: phone.isOnline ? phone.unregisterAll : null,
+                          onPressed: phone.isOnline
+                              ? phone.unregisterAll
+                              : null,
                           child: const Text('Huỷ đăng ký'),
                         ),
                         const SizedBox(width: 16),
@@ -125,7 +129,9 @@ class _SoftPhonePageState extends State<SoftPhonePage> {
                     const Divider(height: 32),
                     TextField(
                       controller: _number,
-                      decoration: const InputDecoration(labelText: 'Số cần gọi'),
+                      decoration: const InputDecoration(
+                        labelText: 'Số cần gọi',
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Row(
