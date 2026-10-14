@@ -57,6 +57,11 @@ class SoftPhoneController extends ChangeNotifier {
   CallSession? _currentCall;
   String _message = '';
 
+  /// Lần cuối đã báo qua [onCallChanged], để không báo trùng
+  /// (ví dụ [hangup] rồi DLL lại gửi sự kiện callClosed).
+  CallSession? _notifiedCall;
+  CallState? _notifiedCallState;
+
   // ---- Callback cho app chủ (tuỳ chọn) ----
 
   /// Gọi khi trạng thái online tổng thể thay đổi.
@@ -64,6 +69,10 @@ class SoftPhoneController extends ChangeNotifier {
 
   /// `true` khi có cuộc gọi đến, `false` khi cuộc gọi kết thúc.
   ValueChanged<bool>? onIncomingCall;
+
+  /// Gọi mỗi khi cuộc gọi hiện tại thay đổi: bắt đầu (gọi ra / gọi đến,
+  /// đang đổ chuông), đã nối ([CallState.active]), hoặc kết thúc (`null`).
+  ValueChanged<CallSession?>? onCallChanged;
 
   // ---- Trạng thái (chỉ đọc từ ngoài) ----
 
@@ -117,6 +126,7 @@ class SoftPhoneController extends ChangeNotifier {
     _completeAllPendingUnregistrations(true);
     notifyListeners();
     onConnectionChanged?.call(false);
+    _notifyCallChanged();
   }
 
   @override
@@ -290,7 +300,10 @@ class SoftPhoneController extends ChangeNotifier {
       direction: CallDirection.outgoing,
       remoteNumber: number,
     );
-    _setMessage('');
+    // Không dùng _setMessage('') vì nó bỏ qua notify khi message vốn đã rỗng.
+    _message = '';
+    notifyListeners();
+    _notifyCallChanged();
     return true;
   }
 
@@ -307,6 +320,7 @@ class SoftPhoneController extends ChangeNotifier {
     engine.answer(account.hotline);
     call.state = CallState.active;
     notifyListeners();
+    _notifyCallChanged();
   }
 
   /// Cúp máy / từ chối cuộc gọi hiện tại.
@@ -409,12 +423,14 @@ class SoftPhoneController extends ChangeNotifier {
     );
     notifyListeners();
     onIncomingCall?.call(true);
+    _notifyCallChanged();
   }
 
   void _onCallEstablished() {
     audioIn.start();
     _currentCall?.state = CallState.active;
     notifyListeners();
+    _notifyCallChanged();
   }
 
   void _endCall() {
@@ -424,6 +440,18 @@ class SoftPhoneController extends ChangeNotifier {
     notifyListeners();
     onConnectionChanged?.call(isOnline);
     onIncomingCall?.call(false);
+    _notifyCallChanged();
+  }
+
+  /// Báo [onCallChanged] nếu cuộc gọi hoặc trạng thái của nó khác lần báo trước.
+  void _notifyCallChanged() {
+    final call = _currentCall;
+    if (identical(call, _notifiedCall) && call?.state == _notifiedCallState) {
+      return;
+    }
+    _notifiedCall = call;
+    _notifiedCallState = call?.state;
+    onCallChanged?.call(call);
   }
 
   /// Hiện tại không giữ file ghi âm: xoá ngay sau khi DLL lưu xong.
