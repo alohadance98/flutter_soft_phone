@@ -8,12 +8,16 @@ enum AccountStatus { offline, online }
 /// [SoftPhoneController] cập nhật theo sự kiện từ baresip.
 class SipAccount {
   SipAccount({
+    required this.uid,
     required this.server,
     required this.hotline,
     required this.password,
     this.autoConnect = false,
     this.status = AccountStatus.offline,
   });
+
+  /// UID của account
+  final String uid;
 
   /// Địa chỉ SIP/Register server, ví dụ `172.28.0.203`.
   final String server;
@@ -48,6 +52,7 @@ class SipAccount {
       server == other.server && hotline == other.hotline;
 
   SipAccount copyWith({
+    String? uid,
     String? server,
     String? hotline,
     String? password,
@@ -55,6 +60,7 @@ class SipAccount {
     AccountStatus? status,
   }) {
     return SipAccount(
+      uid: uid ?? this.uid,
       server: server ?? this.server,
       hotline: hotline ?? this.hotline,
       password: password ?? this.password,
@@ -65,6 +71,7 @@ class SipAccount {
 
   // ---- JSON (để lưu/đọc cấu hình; không lưu status) ----
 
+  static const _kUid = 'uid';
   static const _kServer = 'sipServer';
   static const _kHotline = 'hotline';
   static const _kPassword = 'password';
@@ -73,6 +80,7 @@ class SipAccount {
 
   factory SipAccount.fromJson(Map<String, dynamic> json) {
     return SipAccount(
+      uid: json[_kUid] as String? ?? '',
       server: json[_kServer] as String? ?? '',
       hotline: json[_kHotline] as String? ?? '',
       password: json[_kPassword] as String? ?? '',
@@ -81,6 +89,7 @@ class SipAccount {
   }
 
   Map<String, dynamic> toJson() => {
+    _kUid: uid,
     _kServer: server,
     _kHotline: hotline,
     _kPassword: password,

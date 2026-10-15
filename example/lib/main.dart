@@ -64,6 +64,7 @@ class _SoftPhonePageState extends State<SoftPhonePage> {
     final phone = _phone;
     if (phone == null) return;
     final account = SipAccount(
+      uid: "",
       server: _server.text.trim(),
       hotline: _hotline.text.trim(),
       password: _password.text,

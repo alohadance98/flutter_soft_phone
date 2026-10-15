@@ -332,10 +332,10 @@ class SoftPhoneController extends ChangeNotifier {
   }
 
   String? _validateDial(String number) {
-    if (number.isEmpty) return 'Số điện thoại không được để trống !!!';
-    if (number.length < 10) return 'Số điện thoại không đúng !!!';
-    if (_activeAccount == null) return 'Bạn phải đăng ký hot line !!!';
-    if (hasCall) return 'Đang có cuộc gọi khác !!!';
+    if (number.isEmpty) return 'Số điện thoại không được để trống.';
+    if (number.length < 10) return 'Số điện thoại không hợp lệ.';
+    if (_activeAccount == null) return 'Bạn phải đăng ký hot line.';
+    if (hasCall) return 'Đang có cuộc gọi khác!';
     return null;
   }
 
