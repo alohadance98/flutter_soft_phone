@@ -47,7 +47,7 @@ import 'package:flutter_soft_phone/flutter_soft_phone.dart';
 final phone = SoftPhoneController();
 await phone.init();
 
-final account = SipAccount(server: '172.28.0.203', hotline: '1001', password: '...');
+final account = SipAccount(uid: 'acc-1', server: '172.28.0.203', hotline: '1001', password: '...');
 
 // Cách 1: gửi lệnh và trả về ngay; trạng thái online về sau qua notifyListeners.
 phone.addAccount(account);
@@ -62,6 +62,9 @@ phone.hangup();
 // Huỷ đăng ký: unregister() trả về ngay, unregisterAndWait() chờ server xác nhận
 // (true = đã offline, false = lỗi/timeout).
 final off = await phone.unregisterAndWait(account);
+
+// Sửa account theo uid; nếu đang online sẽ tự huỷ đăng ký và đăng ký lại.
+await phone.updateAccount(account.copyWith(password: 'new-password'));
 ```
 
 `SoftPhoneController` là `ChangeNotifier`, bọc UI bằng `ListenableBuilder`

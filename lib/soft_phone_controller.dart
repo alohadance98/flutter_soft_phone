@@ -158,6 +158,56 @@ class SoftPhoneController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Cập nhật account có cùng [SipAccount.uid] với [updated].
+  ///
+  /// - Chỉ đổi `autoConnect`: sửa trực tiếp trên account hiện có, giữ nguyên
+  ///   trạng thái online.
+  /// - Đổi server / hotline / password: thay account cũ bằng [updated] tại
+  ///   cùng vị trí. Nếu account cũ đang online thì huỷ đăng ký (chờ tối đa
+  ///   [timeout]) rồi đăng ký lại bằng thông tin mới.
+  ///
+  /// Trả `false` khi uid rỗng / không tìm thấy, server + hotline mới trùng với
+  /// một account khác, hoặc huỷ đăng ký account cũ thất bại (account cũ được
+  /// giữ nguyên). Trả `true` khi đã cập nhật; kết quả đăng ký lại về sau qua
+  /// [notifyListeners] / [onConnectionChanged] như [register].
+  Future<bool> updateAccount(
+    SipAccount updated, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    if (updated.uid.isEmpty) return false;
+    final old = _accounts.where((a) => a.uid == updated.uid).firstOrNull;
+    if (old == null) return false;
+    if (_accounts.any((a) => a.uid != updated.uid && a.sameIdentity(updated))) {
+      return false;
+    }
+
+    final credentialsChanged =
+        old.server != updated.server ||
+        old.hotline != updated.hotline ||
+        old.password != updated.password;
+    if (!credentialsChanged) {
+      setAutoConnect(old, updated.autoConnect);
+      return true;
+    }
+
+    final wasOnline = old.isOnline;
+    if (wasOnline && !await unregisterAndWait(old, timeout: timeout)) {
+      return false;
+    }
+
+    // Account cũ có thể đã bị xoá trong lúc chờ huỷ đăng ký.
+    final index = _accounts.indexOf(old);
+    if (index < 0) return false;
+    _completePendingRegistration(old, false);
+    final replacement = updated.copyWith(status: AccountStatus.offline);
+    _accounts[index] = replacement;
+    if (_activeAccount == old) _activeAccount = null;
+    notifyListeners();
+
+    if (wasOnline) await register(replacement);
+    return true;
+  }
+
   void setAutoConnect(SipAccount account, bool value) {
     account.autoConnect = value;
     notifyListeners();
