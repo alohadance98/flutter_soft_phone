@@ -62,6 +62,9 @@ class SoftPhoneController extends ChangeNotifier {
   CallSession? _notifiedCall;
   CallState? _notifiedCallState;
 
+  /// [hangup] đang chờ DLL báo đã lưu file ghi âm (sự kiện recordingSaved).
+  Completer<File?>? _pendingRecording;
+
   // ---- Callback cho app chủ (tuỳ chọn) ----
 
   /// Gọi khi trạng thái online tổng thể thay đổi.
@@ -373,12 +376,30 @@ class SoftPhoneController extends ChangeNotifier {
     _notifyCallChanged();
   }
 
-  /// Cúp máy / từ chối cuộc gọi hiện tại.
-  void hangup() {
+  /// Cúp máy / từ chối cuộc gọi hiện tại, rồi chờ DLL lưu xong file ghi âm.
+  ///
+  /// Trạng thái cuộc gọi được xoá ngay khi gọi hàm (UI không phải chờ).
+  /// Future trả về [File] ghi âm của cuộc gọi, hoặc `null` khi không có
+  /// cuộc gọi, DLL không ghi âm (ví dụ cuộc gọi chưa nối), hoặc quá
+  /// [timeout] mà chưa nhận được sự kiện lưu file.
+  Future<File?> hangup({Duration timeout = const Duration(seconds: 5)}) {
     final account = _activeAccount;
-    if (_currentCall == null || account == null) return;
+    if (_currentCall == null || account == null) return Future.value();
+
+    // Đặt completer trước khi gửi lệnh để không lỡ sự kiện recordingSaved.
+    final completer = Completer<File?>();
+    _pendingRecording = completer;
     engine.hangup(account.hotline);
     _endCall();
+
+    return completer.future.timeout(
+      timeout,
+      onTimeout: () {
+        log('[SoftPhone] no recording received after hangup');
+        if (identical(_pendingRecording, completer)) _pendingRecording = null;
+        return null;
+      },
+    );
   }
 
   String? _validateDial(String number) {
@@ -504,14 +525,15 @@ class SoftPhoneController extends ChangeNotifier {
     onCallChanged?.call(call);
   }
 
-  /// Hiện tại không giữ file ghi âm: xoá ngay sau khi DLL lưu xong.
-  /// Bỏ hàm này (hoặc thêm callback) nếu muốn lưu lại lịch sử ghi âm.
+  /// DLL đã lưu xong file ghi âm: trả về cho [hangup] nếu đang chờ.
   void _onRecordingSaved(String path) {
-    try {
-      log("record: $path");
-      // File(path).deleteSync();
-    } catch (e) {
-      log('[SoftPhone] cannot delete recording $path: $e');
+    // Chuỗi từ C có thể kèm byte 0 ở cuối nếu dataLength tính cả ký tự kết thúc.
+    final cleanPath = path.replaceAll('\u0000', '').trim();
+    log('[SoftPhone] recording saved: $cleanPath');
+    final completer = _pendingRecording;
+    _pendingRecording = null;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(cleanPath.isEmpty ? null : File(cleanPath));
     }
   }
 
