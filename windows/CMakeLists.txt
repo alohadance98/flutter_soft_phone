@@ -59,5 +59,9 @@ target_link_libraries(${PLUGIN_NAME} PRIVATE flutter flutter_wrapper_plugin)
 set(flutter_soft_phone_bundled_libraries
   "${CMAKE_CURRENT_SOURCE_DIR}/libs/baresip-window.dll"
   "${CMAKE_CURRENT_SOURCE_DIR}/libs/sndfile.dll"
+  "${CMAKE_CURRENT_SOURCE_DIR}/libs/ucrtbased.dll"
+  "${CMAKE_CURRENT_SOURCE_DIR}/libs/vcruntime140_1d.dll"
+  "${CMAKE_CURRENT_SOURCE_DIR}/libs/vcruntime140_threadsd.dll"
+  "${CMAKE_CURRENT_SOURCE_DIR}/libs/vcruntime140d.dll"
   PARENT_SCOPE
 )
